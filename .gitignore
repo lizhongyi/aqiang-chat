@@ -1,0 +1,11 @@
+/node_modules
+env.js
+.idea
+/download
+*.log
+/log
+log
+rememberPage.json
+downloadFiles.json
+uploadRank.json
+chat-pics/*
