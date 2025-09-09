@@ -610,6 +610,22 @@
 
             chatMessages.scrollTop = chatMessages.scrollHeight;
         }
+
+        
+        //保存聊天匹配信息到本地存储
+        function saveChatMatchInfo(chatId, partnerNickname) {
+            const chatMatchInfo = {
+                chatId,
+                partnerNickname,
+                timestamp: Date.now()
+            };
+            localStorage.setItem('chatMatchInfo', JSON.stringify(chatMatchInfo));
+        }
+
+        //清楚本地聊天匹配信息
+        function clearChatMatchInfo() {
+            localStorage.removeItem('chatMatchInfo');
+        }
         // 处理接收到的消息
         function handleMessage(data) {
             console.log('收到消息:', data);
@@ -633,6 +649,7 @@
 
                     // 加载当前会话的历史记录（如果有）
                     loadChatHistory(currentChatId);
+                    saveChatMatchInfo(currentChatId, partnerName);
                     break;
 
                 case 'message':
