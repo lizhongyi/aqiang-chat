@@ -162,37 +162,4 @@
             }
         }
 
-   // 初始化表情选择器
-        function initEmojiPicker() {
-            const emojis = ['😊', '😂', '😍', '👍', '❤️', '🎉', '🤔', '😢', '😡', '👏', '🙌', '😉', '😎', '🤷‍♂️', '🙏'];
-            const emojiContainer = emojiPicker.querySelector('div');
-
-            emojis.forEach(emoji => {
-                const emojiBtn = document.createElement('button');
-                emojiBtn.className = 'p-2 hover:bg-gray-100 rounded-full transition';
-                emojiBtn.textContent = emoji;
-                emojiBtn.addEventListener('click', () => {
-                    messageInput.value += emoji;
-                    messageInput.focus();
-                    // 触发输入事件，发送正在输入状态
-                    handleInput();
-                });
-                emojiContainer.appendChild(emojiBtn);
-            });
-
-            emojiBtn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                const rect = emojiBtn.getBoundingClientRect();
-                emojiPicker.style.top = `${rect.bottom + window.scrollY + 5}px`;
-                emojiPicker.style.left = `${rect.left + window.scrollX}px`;
-                emojiPicker.classList.toggle('hidden');
-            });
-
-            document.addEventListener('click', () => {
-                emojiPicker.classList.add('hidden');
-            });
-
-            emojiPicker.addEventListener('click', (e) => {
-                e.stopPropagation();
-            });
-        }      
+   

@@ -36,15 +36,16 @@ const languages = {
 		"shortcuts.send": "• 傳送訊息：按Enter鍵",
 		"history.title": "聊天歷史",
 		"history.close": "關閉歷史",
-		"footer.copyright": "隨機匹配聊天 © 2023 - 保持友好交流",
+		"footer.copyright": "隨機匹配聊天 © 2025 - 保持友好交流",
 		"system.matchFound": "已找到聊天對象：{name}，開始聊天吧！",
 		"system.loadingHistory": "載入歷史記錄...",
 		"system.historyLoaded": "歷史記錄載入完成",
 		"system.partnerLeft": "{name}已離開聊天",
-		"system.clearHistoryConfirm":
-			"確定要清除所有聊天歷史記錄嗎？此操作不可復原。",
+		"system.clearHistoryConfirm": "確定要清除所有聊天歷史記錄嗎？此操作不可復原。",
 		"system.noHistory": "暫無聊天歷史",
 		"system.matchingInfo": "匹配可能需要更長時間，因為你的篩選條件較嚴格",
+		"system.chatRestored": "已恢復之前的聊天會話", // 新增：已恢复之前的聊天会话（繁体）
+		"system.connected": "已成功連接到伺服器" // 新增：已成功连接到服务器（繁体，伺服器为繁体标准用词）
 	},
 	"zh-CN": {
 		"header.title": "随机匹配聊天",
@@ -76,29 +77,29 @@ const languages = {
 		"rules.rule2": "禁止发送违法或不适当内容",
 		"rules.rule3": "保护个人隐私，不要分享敏感信息",
 		"rules.rule4": "如遇不当内容，可随时结束聊天",
-		"rules.rule5": "聊天记录保存在本地，不会上传到服务器", // 新增中文规则5
+		"rules.rule5": "聊天记录保存在本地，不会上传到服务器",
 		"shortcuts.title": "快捷操作",
 		"shortcuts.paste": "• 粘贴图片：使用Ctrl+V（Windows）或Cmd+V（Mac）",
 		"shortcuts.send": "• 发送消息：按Enter键",
 		"history.title": "聊天历史",
 		"history.close": "关闭历史",
-		"footer.copyright": "随机匹配聊天 © 2023 - 保持友好交流",
+		"footer.copyright": "随机匹配聊天 © 2025 - 保持友好交流",
 		"system.matchFound": "已找到聊天对象：{name}，开始聊天吧！",
 		"system.loadingHistory": "加载历史记录...",
 		"system.historyLoaded": "历史记录加载完成",
 		"system.partnerLeft": "{name}已离开聊天",
-		"system.clearHistoryConfirm":
-			"确定要清除所有聊天历史记录吗？此操作不可恢复。",
+		"system.clearHistoryConfirm": "确定要清除所有聊天历史记录吗？此操作不可恢复。",
 		"system.noHistory": "暂无聊天历史",
 		"system.matchingInfo": "匹配可能需要更长时间，因为你的筛选条件较严格",
+		"system.chatRestored": "已恢复之前的聊天会话", // 新增：已恢复之前的聊天会话（简体）
+		"system.connected": "已成功连接到服务器" // 新增：已成功连接到服务器（简体）
 	},
 	en: {
 		"header.title": "Random Match Chat",
 		"header.subtitle": "Chat anonymously with strangers and share your thoughts",
 		"userInfo.title": "Please complete your information",
 		"userInfo.placeholder": "e.g. Sunny Boy, Happy Angel",
-		"userInfo.hint":
-			"Information is only used for matching and will not be publicly displayed",
+		"userInfo.hint": "Information is only used for matching and will not be publicly displayed",
 		"userInfo.button": "Start Matching",
 		"userInfo.myGender": "Your gender:",
 		"userInfo.genderMale": "Male",
@@ -122,26 +123,23 @@ const languages = {
 		"rules.rule1": "Maintain friendly and respectful communication",
 		"rules.rule2": "Prohibit sending illegal or inappropriate content",
 		"rules.rule3": "Protect personal privacy, do not share sensitive information",
-		"rules.rule4":
-			"If you encounter inappropriate content, you can end the chat at any time",
-		"rules.rule5":
-			"Chat history is stored locally and will not be uploaded to the server", // 新增英文规则5
+		"rules.rule4": "If you encounter inappropriate content, you can end the chat at any time",
+		"rules.rule5": "Chat history is stored locally and will not be uploaded to the server",
 		"shortcuts.title": "Quick Actions",
 		"shortcuts.paste": "• Paste image: Use Ctrl+V (Windows) or Cmd+V (Mac)",
 		"shortcuts.send": "• Send message: Press Enter",
 		"history.title": "Chat History",
 		"history.close": "Close History",
-		"footer.copyright":
-			"Random Match Chat © 2023 - Maintain friendly communication",
+		"footer.copyright": "Random Match Chat © 2025 - Maintain friendly communication",
 		"system.matchFound": "Chat partner found: {name}, let's start chatting!",
 		"system.loadingHistory": "Loading history...",
 		"system.historyLoaded": "History loaded",
 		"system.partnerLeft": "{name} has left the chat",
-		"system.clearHistoryConfirm":
-			"Are you sure you want to clear all chat history? This action cannot be undone.",
+		"system.clearHistoryConfirm": "Are you sure you want to clear all chat history? This action cannot be undone.",
 		"system.noHistory": "No chat history",
-		"system.matchingInfo":
-			"Matching may take longer because your filter criteria are strict",
+		"system.matchingInfo": "Matching may take longer because your filter criteria are strict",
+		"system.chatRestored": "Previous chat session has been restored", // 新增：已恢复之前的聊天会话（英文，符合系统提示简洁性）
+		"system.connected": "Successfully connected to the server" // 新增：已成功连接到服务器（英文）
 	},
 	ja: {
 		"header.title": "ランダムマッチチャット",
@@ -172,28 +170,23 @@ const languages = {
 		"rules.rule1": "友好的で尊重的なコミュニケーションを維持する",
 		"rules.rule2": "違法または不適切なコンテンツの送信を禁止する",
 		"rules.rule3": "個人情報を保護し、機密情報を共有しない",
-		"rules.rule4":
-			"不適切なコンテンツがあった場合は、いつでもチャットを終了できます",
-		"rules.rule5":
-			"チャット履歴はローカルに保存され、サーバーにアップロードされません", // 新增日文规则5
+		"rules.rule4": "不適切なコンテンツがあった場合は、いつでもチャットを終了できます",
+		"rules.rule5": "チャット履歴はローカルに保存され、サーバーにアップロードされません",
 		"shortcuts.title": "クイックアクション",
-		"shortcuts.paste":
-			"• 画像を貼り付け：Ctrl+V（Windows）またはCmd+V（Mac）を使用",
+		"shortcuts.paste": "• 画像を貼り付け：Ctrl+V（Windows）またはCmd+V（Mac）を使用",
 		"shortcuts.send": "• メッセージを送信：Enterキーを押す",
 		"history.title": "チャット履歴",
 		"history.close": "履歴を閉じる",
-		"footer.copyright":
-			"ランダムマッチチャット © 2023 - 友好的なコミュニケーションを維持",
-		"system.matchFound":
-			"チャット相手が見つかりました：{name}、チャットを始めましょう！",
+		"footer.copyright": "ランダムマッチチャット © 2025 - 友好的なコミュニケーションを維持",
+		"system.matchFound": "チャット相手が見つかりました：{name}、チャットを始めましょう！",
 		"system.loadingHistory": "履歴を読み込んでいます...",
 		"system.historyLoaded": "履歴の読み込みが完了しました",
 		"system.partnerLeft": "{name}がチャットを離れました",
-		"system.clearHistoryConfirm":
-			"すべてのチャット履歴をクリアしてもよろしいですか？この操作は元に戻せません。",
+		"system.clearHistoryConfirm": "すべてのチャット履歴をクリアしてもよろしいですか？この操作は元に戻せません。",
 		"system.noHistory": "チャット履歴はありません",
-		"system.matchingInfo":
-			"フィルター条件が厳しいため、マッチングに時間がかかる場合があります",
+		"system.matchingInfo": "フィルター条件が厳しいため、マッチングに時間がかかる場合があります",
+		"system.chatRestored": "以前のチャットセッションが復元されました", // 新增：已恢复之前的聊天会话（日语，使用敬体保持系统提示礼貌性）
+		"system.connected": "サーバーへの接続に成功しました" // 新增：已成功连接到服务器（日语）
 	},
 	ko: {
 		"header.title": "랜덤 매치 채팅",
@@ -225,28 +218,28 @@ const languages = {
 		"rules.rule2": "불법 또는 부적절한 내용 전송을 금지합니다",
 		"rules.rule3": "개인 정보를 보호하고, 민감한 정보를 공유하지 마세요",
 		"rules.rule4": "부적절한 내용이 있는 경우 언제든지 채팅을 종료할 수 있습니다",
-		"rules.rule5": "채팅 기록은 로컬에 저장되며 서버에 업로드되지 않습니다", // 新增韩文规则5
+		"rules.rule5": "채팅 기록은 로컬에 저장되며 서버에 업로드되지 않습니다",
 		"shortcuts.title": "빠른 동작",
 		"shortcuts.paste": "• 이미지 붙여넣기: Ctrl+V(Windows) 또는 Cmd+V(Mac) 사용",
 		"shortcuts.send": "• 메시지 전송: Enter 키 누르기",
 		"history.title": "채팅 기록",
 		"history.close": "기록 닫기",
-		"footer.copyright": "랜덤 매치 채팅 © 2023 - 친절한 의사소통 유지",
+		"footer.copyright": "랜덤 매치 채팅 © 2025 - 친절한 의사소통 유지",
 		"system.matchFound": "채팅 상대를 찾았습니다: {name}, 채팅을 시작해보세요!",
 		"system.loadingHistory": "기록을 불러오는 중...",
 		"system.historyLoaded": "기록 불러오기 완료",
 		"system.partnerLeft": "{name}이 채팅을 떠났습니다",
-		"system.clearHistoryConfirm":
-			"모든 채팅 기록을 지우시겠습니까? 이 작업은 되돌릴 수 없습니다.",
+		"system.clearHistoryConfirm": "모든 채팅 기록을 지우시겠습니까? 이 작업은 되돌릴 수 없습니다.",
 		"system.noHistory": "채팅 기록이 없습니다",
-		"system.matchingInfo":
-			"필터 기준이 엄격하기 때문에 매칭에 더 오래 걸릴 수 있습니다",
+		"system.matchingInfo": "필터 기준이 엄격하기 때문에 매칭에 더 오래 걸릴 수 있습니다",
+		"system.chatRestored": "이전 채팅 세션이 복원되었습니다", // 新增：已恢复之前的聊天会话（韩语，符合系统提示正式语气）
+		"system.connected": "서버에 성공적으로 연결되었습니다" // 新增：已成功连接到服务器（韩语）
 	},
 }
 
 // 语言显示名称
 const languageNames = {
-	"zh-TW": "繁體中文", // 新增繁体中文显示名称
+	"zh-TW": "繁體中文",
 	"zh-CN": "简体中文",
 	en: "English",
 	ja: "日本語",

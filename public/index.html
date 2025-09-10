@@ -5,6 +5,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>随机匹配聊天</title>
+    <!-- 引入Socket.io客户端（核心替换：替换原生WS） -->
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
     <script>
@@ -24,11 +26,7 @@
             }
         }
     </script>
-
-
     <link rel="stylesheet" href="/css/index.css">
-
-
 </head>
 
 <body class="bg-gray-100 min-h-screen font-sans">
@@ -43,8 +41,8 @@
                     <i class="fa fa-chevron-down text-xs"></i>
                 </button>
                 <div id="language-dropdown" class="language-dropdown hidden">
-                    <div class="language-option active" data-lang="zh-TW">繁体中文</div>
-                    <div class="language-option " data-lang="zh-CN">简体中文</div>
+                    <div class="language-option" data-lang="zh-TW">繁体中文</div>
+                    <div class="language-option active" data-lang="zh-CN">简体中文</div>
                     <div class="language-option" data-lang="en">English</div>
                     <div class="language-option" data-lang="ja">日本語</div>
                     <div class="language-option" data-lang="ko">한국어</div>
@@ -287,8 +285,7 @@
         </div>
     </div>
 
-
-    <!-- 在body结束前添加图片预览模态框 -->
+    <!-- 图片预览模态框 -->
     <div id="image-modal" class="fixed inset-0 bg-black/80 z-50 hidden items-center justify-center p-4">
         <button id="close-modal"
             class="absolute top-4 right-4 text-white text-2xl hover:text-gray-300 transition-colors">
@@ -299,11 +296,26 @@
     </div>
 
     <script src="/js/i18n.js"></script>
-
     <script>
+        // ======================== 全局变量 ========================
+        // Socket.io实例（核心替换：替代原生WebSocket）
+        let socket;
+        let currentChatId = null;    // 当前聊天会话ID
+        let userNickname = '';       // 当前用户昵称
+        let userGender = 'unknown';  // 用户自身性别（默认保密）
+        let genderPreference = 'any';// 性别匹配偏好（默认不限）
+        let pendingImage = null;     // 待发送的图片URL
+        let typingTimer = null;      // 输入定时器
+        let isTyping = false;        // 是否正在输入
+        const TYPING_DELAY = 1000;   // 输入状态发送间隔(ms)
+        const TYPING_TIMEOUT = 2000; // 输入状态超时时间(ms)
+        let typingTimeoutTimer = null;// 输入状态超时定时器
+        const STORAGE_KEY = 'chat_history'; // 本地存储键名
+        let currentLang = 'zh-CN';   // 默认语言
+        // 新增：聊天状态本地存储键（用于断线重连）
+        const CHAT_STATE_KEY = 'active_chat_state';
 
-
-        // DOM元素
+        // ======================== DOM元素获取 ========================
         const userInfoPanel = document.getElementById('user-info-panel');
         const nicknameInput = document.getElementById('nickname-input');
         const startChatBtn = document.getElementById('start-chat-btn');
@@ -337,124 +349,222 @@
         const genderOptions = document.querySelectorAll('[data-gender]');
         const preferenceOptions = document.querySelectorAll('[data-preference]');
 
-        // 聊天相关变量
-        let socket;
-        let isConnected = false;
-        let currentChatId = null; // 当前聊天会话ID
-        let userNickname = '';    // 当前用户昵称
-        let userGender = 'unknown'; // 用户自身性别，默认为保密
-        let genderPreference = 'any'; // 性别匹配偏好，默认为不限
-        let pendingImage = null;  // 待发送的图片URL
-        let typingTimer = null;   // 输入定时器
-        let isTyping = false;     // 是否正在输入
-        const TYPING_DELAY = 1000; // 输入状态发送间隔(ms)
-        const TYPING_TIMEOUT = 2000; // 输入状态超时时间(ms)
-        let typingTimeoutTimer = null; // 输入状态超时定时器
-        const STORAGE_KEY = 'chat_history'; // 本地存储键名
-        let currentLang = 'zh-CN'; // 默认语言
+        // ======================== 新增：聊天状态本地存储管理（核心重连依赖） ========================
+        /**
+         * 保存聊天状态到localStorage（断线后恢复用）
+         * @param {Object} state - 聊天状态（chatId、伙伴信息、用户信息）
+         */
+        function saveChatStateToLocal(state) {
+            if (!state || !state.chatId) return;
+            localStorage.setItem(CHAT_STATE_KEY, JSON.stringify({
+                ...state,
+                updatedAt: Date.now() // 记录更新时间，避免过期状态
+            }));
+        }
 
-        // 设置语言
+        /**
+         * 从localStorage读取聊天状态
+         * @returns {Object|null} 有效状态或null（超时/解析失败返回null）
+         */
+        function getChatStateFromLocal() {
+            const stateStr = localStorage.getItem(CHAT_STATE_KEY);
+            if (!stateStr) return null;
+            
+            try {
+                const state = JSON.parse(stateStr);
+                // 超时判断（30分钟未恢复视为失效）
+                const TIMEOUT = 30 * 60 * 1000;
+                if (Date.now() - state.updatedAt > TIMEOUT) {
+                    clearChatStateFromLocal();
+                    return null;
+                }
+                return state;
+            } catch (error) {
+                console.error('解析聊天状态失败:', error);
+                clearChatStateFromLocal();
+                return null;
+            }
+        }
+
+        /**
+         * 清除本地聊天状态（仅主动结束聊天时调用）
+         */
+        function clearChatStateFromLocal() {
+            localStorage.removeItem(CHAT_STATE_KEY);
+            clearChatMatchInfo(); // 清除原有匹配信息
+        }
+
+        // ======================== 语言处理 ========================
         function setLanguage(lang) {
             if (!languages[lang]) return;
 
             currentLang = lang;
-
-            // 更新当前语言显示
             currentLanguage.textContent = languageNames[lang] || lang;
 
-            // 更新语言选项的活跃状态
+            // 更新语言选项活跃状态
             languageOptions.forEach(option => {
-                if (option.dataset.lang === lang) {
-                    option.classList.add('active');
-                } else {
-                    option.classList.remove('active');
-                }
+                option.classList.toggle('active', option.dataset.lang === lang);
             });
 
-            // 翻译页面元素
+            // 翻译页面文本
             document.querySelectorAll('[data-i18n]').forEach(el => {
                 const key = el.getAttribute('data-i18n');
-                if (languages[lang][key]) {
-                    el.textContent = languages[lang][key];
-                }
+                el.textContent = languages[lang][key] || el.textContent;
             });
 
             // 翻译占位符
             document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
                 const key = el.getAttribute('data-i18n-placeholder');
-                if (languages[lang][key]) {
-                    el.placeholder = languages[lang][key];
-                }
+                el.placeholder = languages[lang][key] || el.placeholder;
             });
 
-            // 保存用户语言偏好
+            // 保存语言偏好
             localStorage.setItem('preferred_language', lang);
-
-            // 更新动态内容
             updateDynamicContent();
         }
 
-        // 更新动态内容的翻译
         function updateDynamicContent() {
-            // 更新历史记录中的文本
+            // 更新历史记录空状态
             if (historyList.innerHTML.includes('暂无聊天历史')) {
-                historyList.innerHTML = `<p class="text-gray-500" data-i18n="system.noHistory">${languages[currentLang]['system.noHistory']}</p>`;
+                historyList.innerHTML = `<p class="text-gray-500">${languages[currentLang]['system.noHistory'] || '暂无聊天历史'}</p>`;
             }
         }
 
-        // 初始化WebSocket连接
-        function initWebSocket() {
-            // 连接本地WebSocket服务器
-            const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            const wsUri = `${wsProtocol}//${window.location.host}/ws`;
+        // ======================== 新增：会话验证（断线重连核心） ========================
+        /**
+         * 向服务器验证chatId是否有效，有效则恢复聊天
+         * @param {string} chatId - 待验证的聊天会话ID
+         */
+        function verifyChatSession(chatId) {
+            if (!socket.connected) return;
 
-            socket = new WebSocket(wsUri);
+            // 发送验证请求（需服务器配合实现verify_chat事件）
+            socket.emit('verify_chat', { chatId }, (response) => {
+                if (response.success && response.chatInfo) {
+                    const { partnerNickname: pNick, partnerGender, userInfo } = response.chatInfo;
+                    
+                    // 恢复全局状态
+                    currentChatId = chatId;
+                    userNickname = userInfo.nickname;
+                    userGender = userInfo.gender;
+                    genderPreference = userInfo.genderPreference;
 
-            socket.onopen = function () {
-                console.log('WebSocket连接已建立');
-                isConnected = true;
-            };
+                    // 切换UI到聊天面板
+                    userInfoPanel.classList.add('hidden');
+                    matchPanel.classList.add('hidden');
+                    chatPanel.classList.remove('hidden');
 
-            socket.onmessage = function (event) {
-                try {
-                    const data = JSON.parse(event.data);
-                    handleMessage(data);
-                } catch (error) {
-                    console.error('解析消息失败:', error, '消息内容:', event.data);
+                    // 更新伙伴昵称（显示性别）
+                    const genderText = getGenderDisplayText(partnerGender);
+                    partnerNickname.textContent = `${pNick}（${genderText}）`;
+
+                    // 提示恢复成功
+                    addSystemMessage(languages[currentLang]['system.chatRestored'] || '已恢复之前的聊天会话');
+                    
+                    // 加载历史记录
+                    loadChatHistory(currentChatId);
+
+                    // 重新保存最新状态（更新时间戳）
+                    saveChatStateToLocal({
+                        chatId,
+                        partnerNickname: pNick,
+                        partnerGender,
+                        userInfo: { nickname: userNickname, gender: userGender, genderPreference }
+                    });
+
+                    // 恢复输入框可用性
+                    sendBtn.disabled = false;
+                    messageInput.disabled = false;
+                } else {
+                    // 验证失败：清除本地残留，显示初始面板
+                    clearChatStateFromLocal();
+                    userInfoPanel.classList.remove('hidden');
+                    addSystemMessage(response.message || languages[currentLang]['system.chatExpired'] || '聊天会话已失效，请重新匹配');
                 }
-            };
-
-            socket.onclose = function () {
-                console.log('WebSocket连接已关闭');
-                isConnected = false;
-                // 尝试重连
-                setTimeout(initWebSocket, 3000);
-            };
-
-            socket.onerror = function (error) {
-                console.error('WebSocket错误:', error);
-            };
+            });
         }
-        // 添加消息到聊天区域（修复insertBefore报错）
-        function addMessage(content, isOwn, isImage = false, senderNickname) {
-            // 添加消息前先隐藏正在输入提示
-            if (!isOwn) {
-                hideTypingIndicator();
+
+        // 新增：性别显示文本转换（匹配成功/恢复时用）
+        function getGenderDisplayText(genderCode) {
+            switch (genderCode) {
+                case 'male': return languages[currentLang]['userInfo.genderMale'] || '男性';
+                case 'female': return languages[currentLang]['userInfo.genderFemale'] || '女性';
+                default: return languages[currentLang]['userInfo.genderUnknown'] || '保密';
             }
+        }
+
+        // ======================== Socket.io初始化（核心替换：新增重连逻辑） ========================
+        function initSocketIO() {
+            // Socket.io自动处理协议（http->ws，https->wss）和重连
+            socket = io();
+
+            // 连接成功回调（新增：优先尝试恢复会话）
+            socket.on('connect', () => {
+                console.log('Socket.io连接成功，连接ID:', socket.id);
+                addSystemMessage(languages[currentLang]['system.connected'] || '已成功连接到聊天服务器');
+
+                // 新增：连接成功后检查本地是否有未结束的聊天
+                const savedChatState = getChatStateFromLocal();
+                if (savedChatState && savedChatState.chatId) {
+                    verifyChatSession(savedChatState.chatId);
+                } else if (!currentChatId && !matchPanel.classList.contains('hidden')) {
+                    // 无保存状态，但之前在匹配中：重新发起匹配
+                    socket.emit('match_request', {
+                        nickname: userNickname,
+                        gender: userGender,
+                        genderPreference: genderPreference
+                    });
+                }
+            });
+
+            // 接收服务器事件（按业务拆分，清晰易懂）
+            socket.on('match_found', (data) => {
+                handleMessage({ type: 'match_found', ...data });
+            });
+            socket.on('new_message', (data) => {
+                handleMessage({ type: 'message', ...data });
+            });
+            socket.on('typing_status', (data) => {
+                handleMessage({ type: 'typing', ...data });
+            });
+            socket.on('user_disconnected', (data) => {
+                handleMessage({ type: 'user_disconnected', ...data });
+            });
+            socket.on('system_message', (data) => {
+                handleMessage({ type: 'system', ...data });
+            });
+
+            // 连接断开（Socket.io会自动重连）
+            socket.on('disconnect', (reason) => {
+                console.log('Socket.io连接断开，原因:', reason);
+                addSystemMessage(languages[currentLang]['system.disconnected'] || '与服务器断开连接，正在重试...');
+            });
+
+            // 连接错误
+            socket.on('error', (error) => {
+                console.error('Socket.io错误:', error);
+                addSystemMessage(languages[currentLang]['system.socketError'] || '连接出错，请稍候重试');
+            });
+        }
+
+        // ======================== 聊天消息处理 ========================
+        function addMessage(content, isOwn, isImage = false, senderNickname) {
+            // 隐藏输入提示
+            if (!isOwn) hideTypingIndicator();
 
             const messageDiv = document.createElement('div');
             messageDiv.className = `flex ${isOwn ? 'justify-end' : 'justify-start'} gap-2`;
 
-            // 添加头像
+            // 头像
             const avatarDiv = document.createElement('div');
             avatarDiv.className = `w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center flex-shrink-0 mt-1`;
             avatarDiv.innerHTML = `<i class="fa fa-user text-gray-700"></i>`;
 
-            // 消息气泡
+            // 消息容器
             const bubbleContainer = document.createElement('div');
             bubbleContainer.className = 'flex flex-col max-w-[70%]';
 
-            // 发送者昵称（仅显示对方的）
+            // 对方昵称显示
             if (!isOwn && senderNickname) {
                 const nicknameDiv = document.createElement('div');
                 nicknameDiv.className = 'text-xs text-gray-500 mb-1 ml-1';
@@ -462,24 +572,24 @@
                 bubbleContainer.appendChild(nicknameDiv);
             }
 
+            // 消息气泡
             const bubbleClass = isOwn
                 ? 'bg-primary text-white rounded-t-lg rounded-bl-lg'
                 : 'bg-gray-200 text-gray-800 rounded-t-lg rounded-br-lg';
-
             const messageContent = document.createElement('div');
             messageContent.className = `${bubbleClass} px-4 py-2`;
 
+            // 图片/文本内容
             if (isImage) {
-                // 构建完整的图片URL
                 const imageUrl = content.startsWith('http') ? content : `${window.location.origin}${content}`;
-                messageContent.innerHTML = `<img src="${imageUrl}" alt="聊天图片" class=" chat-image rounded max-w-full h-auto">`;
+                messageContent.innerHTML = `<img src="${imageUrl}" alt="聊天图片" class="chat-image rounded max-w-full h-auto">`;
             } else {
                 messageContent.textContent = content;
             }
 
             bubbleContainer.appendChild(messageContent);
 
-            // 组装消息元素
+            // 组装消息（保留输入提示节点）
             if (isOwn) {
                 messageDiv.appendChild(bubbleContainer);
                 messageDiv.appendChild(avatarDiv);
@@ -488,124 +598,79 @@
                 messageDiv.appendChild(bubbleContainer);
             }
 
-            // 核心修复：先检查typing-indicator是否存在于chatMessages中
+            // 插入到输入提示前（避免消息被覆盖）
             if (chatMessages.contains(typingIndicator)) {
-                // 存在则插入到typing-indicator前
                 chatMessages.insertBefore(messageDiv, typingIndicator);
             } else {
-                // 不存在则直接添加到末尾，并重新把typing-indicator加回DOM（防止后续报错）
                 chatMessages.appendChild(messageDiv);
+                chatMessages.appendChild(typingIndicator);
+            }
+
+            // 滚动到底部
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        function addSystemMessage(content) {
+            hideTypingIndicator();
+
+            const systemDiv = document.createElement('div');
+            systemDiv.className = 'text-center';
+
+            const messageContent = document.createElement('div');
+            messageContent.className = 'inline-block bg-gray-100 text-gray-500 text-sm px-3 py-1 rounded-full';
+            messageContent.textContent = content;
+
+            systemDiv.appendChild(messageContent);
+
+            // 插入消息（保留输入提示）
+            if (chatMessages.contains(typingIndicator)) {
+                chatMessages.insertBefore(systemDiv, typingIndicator);
+            } else {
+                chatMessages.appendChild(systemDiv);
                 chatMessages.appendChild(typingIndicator);
             }
 
             chatMessages.scrollTop = chatMessages.scrollHeight;
         }
 
+        function showTypingIndicator() {
+            typingText.textContent = languages[currentLang]['chat.typing'] || '对方正在输入...';
+            typingIndicator.classList.remove('hidden');
 
-        //保存聊天匹配信息到本地存储
-        function saveChatMatchInfo(chatId, partnerNickname) {
-            const chatMatchInfo = {
-                chatId,
-                partnerNickname,
-                timestamp: Date.now()
-            };
-            localStorage.setItem('chatMatchInfo', JSON.stringify(chatMatchInfo));
+            // 输入超时自动隐藏
+            clearTimeout(typingTimeoutTimer);
+            typingTimeoutTimer = setTimeout(hideTypingIndicator, TYPING_TIMEOUT);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
         }
 
-        //清楚本地聊天匹配信息
-        function clearChatMatchInfo() {
-            localStorage.removeItem('chatMatchInfo');
-        }
-        // 处理接收到的消息
-        function handleMessage(data) {
-            console.log('收到消息:', data);
-
-            switch (data.type) {
-                case 'match_found':
-                    // 匹配成功，显示聊天面板
-                    matchPanel.classList.add('hidden');
-                    chatPanel.classList.remove('hidden');
-                    currentChatId = data.chatId || generateChatId();
-
-                    // 显示聊天伙伴昵称
-                    const partnerName = data.partnerNickname && data.partnerNickname.trim()
-                        ? data.partnerNickname
-                        : languages[currentLang]['chat.partner'];
-
-                    partnerNickname.textContent = partnerName;
-                    // 使用国际化消息
-                    const matchFoundMsg = languages[currentLang]['system.matchFound'].replace('{name}', partnerName);
-                    addSystemMessage(matchFoundMsg);
-
-                    // 加载当前会话的历史记录（如果有）
-                    loadChatHistory(currentChatId);
-                    saveChatMatchInfo(currentChatId, partnerName);
-                    break;
-
-                case 'message':
-                    // 收到消息时隐藏正在输入提示
-                    hideTypingIndicator();
-
-                    // 收到消息
-                    addMessage(data.content, false, data.isImage, data.senderNickname);
-                    // 保存到本地存储
-                    saveMessageToHistory(currentChatId, data.content, false, data.isImage, data.senderNickname);
-                    break;
-
-                case 'typing':
-                    // 处理对方正在输入状态
-                    if (data.chatId === currentChatId) {
-                        if (data.isTyping) {
-                            showTypingIndicator();
-                        } else {
-                            hideTypingIndicator();
-                        }
-                    }
-                    break;
-
-                case 'user_disconnected':
-                    // 对方断开连接，隐藏正在输入提示
-                    hideTypingIndicator();
-
-                    // 对方断开连接，使用国际化消息
-                    const partnerLeftMsg = languages[currentLang]['system.partnerLeft'].replace('{name}', partnerNickname.textContent);
-                    addSystemMessage(partnerLeftMsg);
-                    sendBtn.disabled = true;
-                    messageInput.disabled = true;
-                    break;
-
-                case 'system':
-                    // 系统消息，隐藏正在输入提示
-                    hideTypingIndicator();
-
-                    // 系统消息
-                    addSystemMessage(data.content);
-                    break;
-            }
+        function hideTypingIndicator() {
+            typingIndicator.classList.add('hidden');
+            clearTimeout(typingTimeoutTimer);
         }
 
-        // 发送消息（支持文本和图片）
+        // ======================== 消息发送（Socket.io事件） ========================
         function sendMessage(content, isImage = false) {
-            if (!isConnected || !currentChatId) return;
+            if (!socket.connected || !currentChatId) return;
 
-            // 发送消息时，通知对方已停止输入
+            // 发送消息时停止输入状态
             sendTypingStatus(false);
 
-            // 如果有 pendingImage，优先发送图片
+            // 优先发送待传图片
             if (pendingImage) {
-                const message = {
-                    type: 'message',
+                const messageData = {
                     content: pendingImage,
                     isImage: true,
                     chatId: currentChatId,
-                    senderNickname: userNickname
+                    senderNickname: userNickname,
+                    timestamp: new Date().toISOString()
                 };
 
-                socket.send(JSON.stringify(message));
+                // 发送Socket.io事件
+                socket.emit('new_message', messageData);
                 addMessage(pendingImage, true, true, userNickname);
                 saveMessageToHistory(currentChatId, pendingImage, true, true, userNickname);
 
-                // 清除 pendingImage 和通知
+                // 清除待传图片
                 pendingImage = null;
                 pasteNotification.classList.add('hidden');
                 return;
@@ -613,257 +678,51 @@
 
             // 发送文本消息
             if (content.trim()) {
-                const message = {
-                    type: 'message',
+                const messageData = {
                     content: content,
-                    isImage: isImage,
+                    isImage: false,
                     chatId: currentChatId,
-                    senderNickname: userNickname
+                    senderNickname: userNickname,
+                    timestamp: new Date().toISOString()
                 };
 
-                socket.send(JSON.stringify(message));
-                addMessage(content, true, isImage, userNickname);
-                saveMessageToHistory(currentChatId, content, true, isImage, userNickname);
+                socket.emit('new_message', messageData);
+                addMessage(content, true, false, userNickname);
+                saveMessageToHistory(currentChatId, content, true, false, userNickname);
                 messageInput.value = '';
             }
         }
 
-        // 添加系统消息（修复insertBefore报错）
-        function addSystemMessage(content) {
-            // 隐藏正在输入提示
-            hideTypingIndicator();
-
-            const systemDiv = document.createElement('div');
-            systemDiv.className = 'text-center';
-
-            const messageContent = document.createElement('div');
-            messageContent.className = 'inline-block bg-gray-100 text-gray-500 text-sm px-3 py-1 rounded-full';
-            messageContent.textContent = content;
-
-            systemDiv.appendChild(messageContent);
-
-            // 核心修复：先检查typing-indicator是否存在
-            if (chatMessages.contains(typingIndicator)) {
-                chatMessages.insertBefore(systemDiv, typingIndicator);
-            } else {
-                chatMessages.appendChild(systemDiv);
-                chatMessages.appendChild(typingIndicator);
-            }
-
-            chatMessages.scrollTop = chatMessages.scrollHeight;
-        }
-
-        // 添加系统消息（修复insertBefore报错）
-        function addSystemMessage(content) {
-            // 隐藏正在输入提示
-            hideTypingIndicator();
-
-            const systemDiv = document.createElement('div');
-            systemDiv.className = 'text-center';
-
-            const messageContent = document.createElement('div');
-            messageContent.className = 'inline-block bg-gray-100 text-gray-500 text-sm px-3 py-1 rounded-full';
-            messageContent.textContent = content;
-
-            systemDiv.appendChild(messageContent);
-
-            // 核心修复：先检查typing-indicator是否存在
-            if (chatMessages.contains(typingIndicator)) {
-                chatMessages.insertBefore(systemDiv, typingIndicator);
-            } else {
-                chatMessages.appendChild(systemDiv);
-                chatMessages.appendChild(typingIndicator);
-            }
-
-            chatMessages.scrollTop = chatMessages.scrollHeight;
-        }
-
-        // 显示正在输入提示
-        function showTypingIndicator() {
-            // 更新提示文本（国际化）
-            typingText.textContent = languages[currentLang]['chat.typing'];
-
-            // 显示提示
-            typingIndicator.classList.remove('hidden');
-
-            // 重置超时计时器
-            clearTimeout(typingTimeoutTimer);
-            typingTimeoutTimer = setTimeout(() => {
-                hideTypingIndicator();
-            }, TYPING_TIMEOUT);
-
-            // 滚动到底部
-            chatMessages.scrollTop = chatMessages.scrollHeight;
-        }
-
-        // 隐藏正在输入提示
-        function hideTypingIndicator() {
-            typingIndicator.classList.add('hidden');
-            clearTimeout(typingTimeoutTimer);
-        }
-
-        // 发送输入状态
         function sendTypingStatus(status) {
-            if (!isConnected || !currentChatId || isTyping === status) return;
+            if (!socket.connected || !currentChatId || isTyping === status) return;
 
             isTyping = status;
-
-            socket.send(JSON.stringify({
-                type: 'typing',
+            // 发送输入状态事件
+            socket.emit('typing_status', {
                 isTyping: status,
-                chatId: currentChatId
-            }));
+                chatId: currentChatId,
+                senderNickname: userNickname
+            });
         }
 
-        // 处理输入事件，发送正在输入状态
         function handleInput() {
-            // 如果有图片待发送，则不发送输入状态
+            // 有待传图片时不发送输入状态
             if (pendingImage) return;
 
-            // 清除之前的定时器
             clearTimeout(typingTimer);
+            if (!isTyping) sendTypingStatus(true);
 
-            // 如果之前没有发送过正在输入状态，则立即发送
-            if (!isTyping) {
-                sendTypingStatus(true);
-            }
-
-            // 设置定时器，延迟一段时间后发送停止输入状态
+            // 超时后发送停止输入状态
             typingTimer = setTimeout(() => {
                 sendTypingStatus(false);
             }, TYPING_TIMEOUT);
         }
 
-        // 本地存储相关函数
-        function getChatHistory() {
-            const history = localStorage.getItem(STORAGE_KEY);
-            return history ? JSON.parse(history) : {};
-        }
-
-        function saveChatHistory(history) {
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(history));
-        }
-
-        function saveMessageToHistory(chatId, content, isOwn, isImage, senderNickname) {
-            const history = getChatHistory();
-
-            if (!history[chatId]) {
-                history[chatId] = {
-                    timestamp: new Date().toISOString(),
-                    partnerNickname: partnerNickname.textContent,
-                    messages: []
-                };
-            }
-
-            history[chatId].messages.push({
-                content: content,
-                isOwn: isOwn,
-                isImage: isImage,
-                senderNickname: senderNickname,
-                timestamp: new Date().toISOString()
-            });
-
-            saveChatHistory(history);
-        }
-
-        function loadChatHistory(chatId) {
-            const history = getChatHistory();
-            const chatHistory = history[chatId];
-
-            if (chatHistory && chatHistory.messages.length > 0) {
-                // 使用国际化消息
-                addSystemMessage(languages[currentLang]['system.loadingHistory']);
-
-                chatHistory.messages.forEach(msg => {
-                    addMessage(msg.content, msg.isOwn, msg.isImage, msg.senderNickname);
-                });
-
-                // 使用国际化消息
-                addSystemMessage(languages[currentLang]['system.historyLoaded']);
-            }
-        }
-
-        function showChatHistoryList() {
-            const history = getChatHistory();
-            historyList.innerHTML = '';
-
-            const chatSessions = Object.entries(history).map(([id, data]) => ({
-                id,
-                ...data
-            })).sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-
-            if (chatSessions.length === 0) {
-                historyList.innerHTML = `<p class="text-gray-500" data-i18n="system.noHistory">${languages[currentLang]['system.noHistory']}</p>`;
-                return;
-            }
-
-            chatSessions.forEach(session => {
-                const item = document.createElement('div');
-                item.className = 'p-2 border-b border-gray-100 last:border-0 hover:bg-gray-100 rounded cursor-pointer';
-
-                const date = new Date(session.timestamp);
-                const formattedDate = date.toLocaleString();
-
-                const lastMessage = session.messages[session.messages.length - 1];
-                let messagePreview = lastMessage.isImage ? '[图片]' :
-                    lastMessage.content.length > 20 ?
-                        lastMessage.content.substring(0, 20) + '...' :
-                        lastMessage.content;
-
-                item.innerHTML = `
-                    <div class="font-medium text-sm">与 ${session.partnerNickname} 的聊天</div>
-                    <div class="text-xs text-gray-500">${formattedDate}</div>
-                    <div class="text-xs">${lastMessage.isOwn ? '你: ' : session.partnerNickname + ': '}${messagePreview}</div>
-                `;
-
-                item.addEventListener('click', () => {
-                    if (currentChatId && currentChatId !== session.id) {
-                        endChat();
-                    }
-
-                    currentChatId = session.id;
-                    partnerNickname.textContent = session.partnerNickname;
-                    userInfoPanel.classList.add('hidden');
-                    matchPanel.classList.add('hidden');
-                    chatPanel.classList.remove('hidden');
-                    chatMessages.innerHTML = '';
-                    loadChatHistory(currentChatId);
-                    historyPanel.classList.add('hidden');
-                });
-
-                historyList.appendChild(item);
-            });
-        }
-
-        function clearAllChatHistory() {
-            // 使用自定义确认对话框
-            showCustomConfirm(languages[currentLang]['system.clearHistoryConfirm'], () => {
-                localStorage.removeItem(STORAGE_KEY);
-                showChatHistoryList();
-                addSystemMessage('所有聊天历史已清除');
-            });
-        }
-
-        function generateChatId() {
-            return Math.random().toString(36).substring(2, 15) +
-                Math.random().toString(36).substring(2, 15);
-        }
-
-
-
-
-
-
-
-
-
-
-
-        // 开始匹配流程
+        // ======================== 匹配逻辑（新增：匹配成功保存状态） ========================
         function startMatching() {
             const nickname = nicknameInput.value.trim();
             if (!nickname) {
-                showCustomAlert('', languages[currentLang]['userInfo.title']); // 使用自定义提示框
+                showCustomAlert('', languages[currentLang]['userInfo.nicknameRequired'] || '请输入你的昵称');
                 return;
             }
 
@@ -871,73 +730,78 @@
             userInfoPanel.classList.add('hidden');
             matchPanel.classList.remove('hidden');
 
-            // 如果用户选择了特定的匹配偏好，显示提示信息
+            // 显示偏好匹配提示
             if (genderPreference !== 'any') {
-                addSystemMessageToMatchPanel(languages[currentLang]['system.matchingInfo']);
+                addSystemMessageToMatchPanel(
+                    languages[currentLang]['system.matchingInfo'] || '正在根据你的性别偏好匹配聊天对象...'
+                );
             }
 
-            if (isConnected) {
-                socket.send(JSON.stringify({
-                    type: 'match_request',
+            // 发送匹配请求（Socket.io事件）
+            if (socket.connected) {
+                socket.emit('match_request', {
                     nickname: userNickname,
                     gender: userGender,
                     genderPreference: genderPreference
-                }));
+                });
+            } else {
+                // 连接中提示重试
+                addSystemMessageToMatchPanel(
+                    languages[currentLang]['system.notConnected'] || '正在连接服务器，请稍候...'
+                );
+                setTimeout(() => {
+                    if (socket.connected) {
+                        socket.emit('match_request', {
+                            nickname: userNickname,
+                            gender: userGender,
+                            genderPreference: genderPreference
+                        });
+                    }
+                }, 1500);
             }
         }
 
-        // 向匹配面板添加系统消息
-        function addSystemMessageToMatchPanel(content) {
-            const existingMessage = matchPanel.querySelector('.system-message');
-            if (existingMessage) {
-                existingMessage.remove();
-            }
-
-            const messageDiv = document.createElement('div');
-            messageDiv.className = 'system-message text-sm text-gray-500 mt-4';
-            messageDiv.innerHTML = `<i class="fa fa-info-circle mr-1 text-primary"></i>${content}`;
-
-            matchPanel.appendChild(messageDiv);
-        }
-
-        // 取消匹配
         function cancelMatch() {
-            if (isConnected) {
-                socket.send(JSON.stringify({ type: 'cancel_match' }));
+            // 发送取消匹配事件
+            if (socket.connected) {
+                socket.emit('cancel_match', { nickname: userNickname });
             }
 
-            // 移除系统消息
+            // 清理状态
             const systemMessage = matchPanel.querySelector('.system-message');
-            if (systemMessage) {
-                systemMessage.remove();
-            }
+            if (systemMessage) systemMessage.remove();
 
             matchPanel.classList.add('hidden');
             userInfoPanel.classList.remove('hidden');
         }
 
-        // 结束聊天（修复：清空内容时保留typing-indicator）
+        // 新增：修改endChat，主动结束时清除本地状态
         function endChat() {
             // 发送停止输入状态
             sendTypingStatus(false);
 
-            if (isConnected) {
-                socket.send(JSON.stringify({ type: 'end_chat', chatId: currentChatId }));
+            // 发送结束聊天事件
+            if (socket.connected && currentChatId) {
+                socket.emit('end_chat', {
+                    chatId: currentChatId,
+                    nickname: userNickname
+                });
             }
 
-            // 重置状态：清空聊天内容但保留typing-indicator（关键修改）
+            // 新增：主动结束时清除本地聊天状态
+            clearChatStateFromLocal();
+
+            // 重置界面状态
             chatPanel.classList.add('hidden');
             userInfoPanel.classList.remove('hidden');
 
-            // 遍历删除子节点，遇到typing-indicator则跳过（保留）
+            // 保留输入提示节点，清空其他消息
             while (chatMessages.firstChild) {
-                if (chatMessages.firstChild === typingIndicator) {
-                    break; // 保留typing-indicator，不删除
-                }
+                if (chatMessages.firstChild === typingIndicator) break;
                 chatMessages.removeChild(chatMessages.firstChild);
             }
 
-            // 其他状态重置（保持不变）
+            // 重置变量
             sendBtn.disabled = false;
             messageInput.disabled = false;
             currentChatId = null;
@@ -948,17 +812,14 @@
             hideTypingIndicator();
         }
 
-
-
-        // 上传图片到服务器
-        function uploadImageToServer(file) {
+        // ======================== 图片处理 ========================
+        async function uploadImageToServer(file) {
             return new Promise((resolve, reject) => {
-                // 显示进度条
                 uploadProgressContainer.classList.remove('hidden');
                 progressBar.style.width = '0%';
                 uploadError.classList.add('hidden');
 
-                // 上传图片时发送停止输入状态
+                // 上传时停止输入状态
                 sendTypingStatus(false);
 
                 const formData = new FormData();
@@ -967,18 +828,15 @@
                 const xhr = new XMLHttpRequest();
                 xhr.open('POST', '/upload', true);
 
-                // 监听上传进度
+                // 上传进度
                 xhr.upload.addEventListener('progress', (e) => {
                     if (e.lengthComputable) {
-                        const percent = (e.loaded / e.total) * 100;
-                        progressBar.style.width = `${percent}%`;
+                        progressBar.style.width = `${(e.loaded / e.total) * 100}%`;
                     }
                 });
 
                 xhr.onload = () => {
-                    // 隐藏进度条
                     uploadProgressContainer.classList.add('hidden');
-
                     if (xhr.status >= 200 && xhr.status < 300) {
                         try {
                             const response = JSON.parse(xhr.responseText);
@@ -1004,220 +862,397 @@
             });
         }
 
-        // 处理图片上传
         async function handleImageUpload(event) {
             const file = event.target.files[0];
-            if (!file) return;
-
-            // 简单验证文件类型
-            if (!file.type.startsWith('image/')) {
-                showUploadError(languages[currentLang]['chat.uploadError']);
+            if (!file || !file.type.startsWith('image/')) {
+                showUploadError(languages[currentLang]['chat.invalidImage'] || '请选择有效的图片文件');
                 return;
             }
 
             try {
-                // 上传图片到服务器
                 const imageUrl = await uploadImageToServer(file);
-
-                // 将图片设置为待发送状态
                 pendingImage = imageUrl;
-
-                // 显示通知
                 pasteNotification.classList.remove('hidden');
-
-                // 3秒后自动隐藏通知
-                setTimeout(() => {
-                    pasteNotification.classList.add('hidden');
-                }, 3000);
+                setTimeout(() => pasteNotification.classList.add('hidden'), 3000);
             } catch (error) {
                 showUploadError(error.message);
             } finally {
-                // 重置文件输入，允许重复选择同一文件
-                imageUpload.value = '';
+                imageUpload.value = ''; // 重置输入
             }
         }
 
-        // 处理剪切板粘贴
         async function handlePaste(event) {
-            // 只有在聊天面板显示时才处理粘贴
             if (chatPanel.classList.contains('hidden')) return;
 
             const items = (event.clipboardData || event.originalEvent.clipboardData).items;
-
-            // 检查粘贴内容中是否有图片
             for (let item of items) {
-                if (item.kind === 'file') {
+                if (item.kind === 'file' && item.type.startsWith('image/')) {
+                    event.preventDefault();
                     const file = item.getAsFile();
 
-                    // 检查是否为图片文件
-                    if (file.type.startsWith('image/')) {
-                        event.preventDefault(); // 阻止默认粘贴行为
-
-                        try {
-                            // 上传图片到服务器
-                            const imageUrl = await uploadImageToServer(file);
-
-                            // 将图片设置为待发送状态
-                            pendingImage = imageUrl;
-
-                            // 显示通知
-                            pasteNotification.classList.remove('hidden');
-
-                            // 3秒后自动隐藏通知
-                            setTimeout(() => {
-                                pasteNotification.classList.add('hidden');
-                            }, 3000);
-                        } catch (error) {
-                            showUploadError(error.message);
-                        }
-
-                        return;
+                    try {
+                        const imageUrl = await uploadImageToServer(file);
+                        pendingImage = imageUrl;
+                        pasteNotification.classList.remove('hidden');
+                        setTimeout(() => pasteNotification.classList.add('hidden'), 3000);
+                    } catch (error) {
+                        showUploadError(error.message);
                     }
+                    return;
                 }
             }
 
-            // 如果有 pendingImage 但粘贴的是文本，清除 pendingImage
+            // 粘贴文本时清除待传图片
             if (pendingImage && items.length > 0 && items[0].kind === 'string') {
                 pendingImage = null;
                 pasteNotification.classList.add('hidden');
-
-                // 触发输入事件，发送正在输入状态
                 setTimeout(handleInput, 0);
             }
         }
 
-        // 显示上传错误
         function showUploadError(message) {
             errorMessage.textContent = message;
             uploadError.classList.remove('hidden');
-
-            // 5秒后自动隐藏错误提示
-            setTimeout(() => {
-                uploadError.classList.add('hidden');
-            }, 5000);
+            setTimeout(() => uploadError.classList.add('hidden'), 5000);
         }
 
-        // 处理性别选择
+        // ======================== 本地存储 ========================
+        function getChatHistory() {
+            const history = localStorage.getItem(STORAGE_KEY);
+            return history ? JSON.parse(history) : {};
+        }
+
+        function saveChatHistory(history) {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(history));
+        }
+
+        function saveMessageToHistory(chatId, content, isOwn, isImage, senderNickname) {
+            const history = getChatHistory();
+            if (!history[chatId]) {
+                history[chatId] = {
+                    timestamp: new Date().toISOString(),
+                    partnerNickname: partnerNickname.textContent,
+                    messages: []
+                };
+            }
+
+            history[chatId].messages.push({
+                content, isOwn, isImage, senderNickname,
+                timestamp: new Date().toISOString()
+            });
+
+            saveChatHistory(history);
+        }
+
+        function loadChatHistory(chatId) {
+            const history = getChatHistory()[chatId];
+            if (history && history.messages.length > 0) {
+                addSystemMessage(languages[currentLang]['system.loadingHistory'] || '正在加载历史记录...');
+                history.messages.forEach(msg => {
+                    addMessage(msg.content, msg.isOwn, msg.isImage, msg.senderNickname);
+                });
+                addSystemMessage(languages[currentLang]['system.historyLoaded'] || '历史记录加载完成');
+            }
+        }
+
+        function showChatHistoryList() {
+            const history = getChatHistory();
+            historyList.innerHTML = '';
+
+            // 按时间排序会话
+            const chatSessions = Object.entries(history)
+                .map(([id, data]) => ({ id, ...data }))
+                .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+
+            if (chatSessions.length === 0) {
+                historyList.innerHTML = `<p class="text-gray-500">${languages[currentLang]['system.noHistory'] || '暂无聊天历史'}</p>`;
+                return;
+            }
+
+            chatSessions.forEach(session => {
+                const item = document.createElement('div');
+                item.className = 'p-2 border-b border-gray-100 last:border-0 hover:bg-gray-100 rounded cursor-pointer';
+
+                const date = new Date(session.timestamp);
+                const lastMsg = session.messages[session.messages.length - 1];
+                const msgPreview = lastMsg.isImage 
+                    ? '[图片]' 
+                    : lastMsg.content.length > 20 
+                        ? `${lastMsg.content.substring(0, 20)}...` 
+                        : lastMsg.content;
+
+                item.innerHTML = `
+                    <div class="font-medium text-sm">与 ${session.partnerNickname} 的聊天</div>
+                    <div class="text-xs text-gray-500">${date.toLocaleString()}</div>
+                    <div class="text-xs">${lastMsg.isOwn ? '你: ' : `${session.partnerNickname}: `}${msgPreview}</div>
+                `;
+
+                item.addEventListener('click', () => {
+                    if (currentChatId && currentChatId !== session.id) endChat();
+                    currentChatId = session.id;
+                    partnerNickname.textContent = session.partnerNickname;
+                    userInfoPanel.classList.add('hidden');
+                    matchPanel.classList.add('hidden');
+                    chatPanel.classList.remove('hidden');
+                    chatMessages.innerHTML = '';
+                    loadChatHistory(currentChatId);
+                    historyPanel.classList.add('hidden');
+                });
+
+                historyList.appendChild(item);
+            });
+        }
+
+        function clearAllChatHistory() {
+            showCustomConfirm(
+                languages[currentLang]['system.clearHistoryConfirm'] || '确定要清除所有聊天历史吗？',
+                () => {
+                    localStorage.removeItem(STORAGE_KEY);
+                    showChatHistoryList();
+                    addSystemMessage(languages[currentLang]['system.historyCleared'] || '所有聊天历史已清除');
+                }
+            );
+        }
+
+        function saveChatMatchInfo(chatId, partnerNickname) {
+            localStorage.setItem('chatMatchInfo', JSON.stringify({
+                chatId, partnerNickname, timestamp: Date.now()
+            }));
+        }
+
+        function clearChatMatchInfo() {
+            localStorage.removeItem('chatMatchInfo');
+        }
+
+        // ======================== 消息处理核心（修改：匹配成功保存状态） ========================
+        function handleMessage(data) {
+            console.log('收到服务器消息:', data);
+            switch (data.type) {
+                case 'match_found':
+                    // 匹配成功
+                    matchPanel.classList.add('hidden');
+                    chatPanel.classList.remove('hidden');
+                    currentChatId = data.chatId || generateChatId();
+
+                    const partnerName = data.partnerNickname?.trim() || languages[currentLang]['chat.partner'];
+                    const partnerGender = data.partnerGender || 'unknown'; // 新增：获取伙伴性别
+                    const genderText = getGenderDisplayText(partnerGender);
+                    partnerNickname.textContent = `${partnerName}（${genderText}）`;
+                    
+                    // 显示带性别的匹配消息
+                    addSystemMessage(
+                        (languages[currentLang]['system.matchFound'] || '11已匹配到聊天伙伴: {name}（性别：{gender}）')
+                            .replace('{name}', partnerName)
+                            .replace('{gender}', genderText)
+                    );
+
+                    // 新增：保存聊天状态到本地（用于断线恢复）
+                    saveChatStateToLocal({
+                        chatId: currentChatId,
+                        partnerNickname: partnerName,
+                        partnerGender: partnerGender,
+                        userInfo: {
+                            nickname: userNickname,
+                            gender: userGender,
+                            genderPreference: genderPreference
+                        }
+                    });
+
+                    loadChatHistory(currentChatId);
+                    saveChatMatchInfo(currentChatId, partnerName);
+                    break;
+
+                case 'message':
+                    // 收到新消息
+                    hideTypingIndicator();
+                    addMessage(data.content, false, data.isImage, data.senderNickname);
+                    saveMessageToHistory(currentChatId, data.content, false, data.isImage, data.senderNickname);
+                    break;
+
+                case 'typing':
+                    // 对方输入状态
+                    if (data.chatId === currentChatId) {
+                        data.isTyping ? showTypingIndicator() : hideTypingIndicator();
+                    }
+                    break;
+
+                case 'user_disconnected':
+                    // 对方断开连接
+                    hideTypingIndicator();
+                    addSystemMessage(
+                        (languages[currentLang]['system.partnerLeft'] || '聊天伙伴 {name} 已离开').replace('{name}', partnerNickname.textContent)
+                    );
+                    sendBtn.disabled = true;
+                    messageInput.disabled = true;
+                    break;
+
+                case 'system':
+                    // 系统消息
+                    hideTypingIndicator();
+                   addSystemMessage(
+                        (languages[currentLang][data.messageKey] || data.content)
+                    );
+                    break;
+            }
+        }
+
+        // ======================== 工具函数 ========================
+        function generateChatId() {
+            return `${Math.random().toString(36).slice(2, 15)}${Math.random().toString(36).slice(2, 15)}`;
+        }
+
         function handleGenderSelection() {
-            // 处理用户自身性别选择
+            // 自身性别选择
             genderOptions.forEach(option => {
                 option.addEventListener('click', () => {
-                    // 移除所有选项的选中状态
                     genderOptions.forEach(opt => opt.classList.remove('selected'));
-
-                    // 设置当前选项为选中状态
                     option.classList.add('selected');
-
-                    // 保存选中的性别
                     userGender = option.dataset.gender;
                 });
             });
 
-            // 处理匹配性别偏好选择
+            // 匹配偏好选择
             preferenceOptions.forEach(option => {
                 option.addEventListener('click', () => {
-                    // 移除所有选项的选中状态
                     preferenceOptions.forEach(opt => opt.classList.remove('selected'));
-
-                    // 设置当前选项为选中状态
                     option.classList.add('selected');
-
-                    // 保存选中的性别偏好
                     genderPreference = option.dataset.preference;
                 });
             });
         }
 
-        // 事件监听
-        startChatBtn.addEventListener('click', startMatching);
+        function addSystemMessageToMatchPanel(content) {
+            // 移除已有消息
+            const existing = matchPanel.querySelector('.system-message');
+            if (existing) existing.remove();
 
-        sendBtn.addEventListener('click', () => {
-            sendMessage(messageInput.value.trim());
-        });
+            const msgDiv = document.createElement('div');
+            msgDiv.className = 'system-message text-sm text-gray-500 mt-4';
+            msgDiv.innerHTML = `<i class="fa fa-info-circle mr-1 text-primary"></i>${content}`;
+            matchPanel.appendChild(msgDiv);
+        }
 
-        messageInput.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') {
-                sendMessage(messageInput.value.trim());
-            }
-        });
+        // ======================== 事件监听 ========================
+        function initEventListeners() {
+            // 开始匹配
+            startChatBtn.addEventListener('click', startMatching);
 
-        // 监听输入事件，用于发送正在输入状态
-        messageInput.addEventListener('input', handleInput);
+            // 发送消息
+            sendBtn.addEventListener('click', () => sendMessage(messageInput.value.trim()));
+            messageInput.addEventListener('keypress', (e) => e.key === 'Enter' && sendMessage(messageInput.value.trim()));
+            messageInput.addEventListener('input', handleInput);
 
-        cancelMatchBtn.addEventListener('click', cancelMatch);
-        endChatBtn.addEventListener('click', endChat);
-        imageUpload.addEventListener('change', handleImageUpload);
+            // 取消匹配/结束聊天
+            cancelMatchBtn.addEventListener('click', cancelMatch);
+            endChatBtn.addEventListener('click', endChat);
 
-        // 历史记录相关事件
-        historyBtn.addEventListener('click', () => {
-            showChatHistoryList();
-            historyPanel.classList.toggle('hidden');
-        });
+            // 图片处理
+            imageUpload.addEventListener('change', handleImageUpload);
+            document.addEventListener('paste', handlePaste);
 
-        closeHistoryBtn.addEventListener('click', () => {
-            historyPanel.classList.add('hidden');
-        });
-
-        clearHistoryBtn.addEventListener('click', clearAllChatHistory);
-
-        // 剪切板粘贴事件监听
-        document.addEventListener('paste', handlePaste);
-
-        // 语言选择事件
-        languageBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            languageDropdown.classList.toggle('hidden');
-        });
-
-        languageOptions.forEach(option => {
-            option.addEventListener('click', () => {
-                const lang = option.dataset.lang;
-                setLanguage(lang);
-                languageDropdown.classList.add('hidden');
+            // 历史记录
+            historyBtn.addEventListener('click', () => {
+                showChatHistoryList();
+                historyPanel.classList.toggle('hidden');
             });
-        });
+            closeHistoryBtn.addEventListener('click', () => historyPanel.classList.add('hidden'));
+            clearHistoryBtn.addEventListener('click', clearAllChatHistory);
 
-        document.addEventListener('click', () => {
-            languageDropdown.classList.add('hidden');
-        });
+            // 语言选择
+            languageBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                languageDropdown.classList.toggle('hidden');
+            });
+            languageOptions.forEach(option => {
+                option.addEventListener('click', () => {
+                    setLanguage(option.dataset.lang);
+                    languageDropdown.classList.add('hidden');
+                });
+            });
+            document.addEventListener('click', () => languageDropdown.classList.add('hidden'));
+            languageDropdown.addEventListener('click', (e) => e.stopPropagation());
 
-        languageDropdown.addEventListener('click', (e) => {
-            e.stopPropagation();
-        });
+            // 表情选择器（假设initEmojiPicker在add_ui.js中）
+            emojiBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const rect = emojiBtn.getBoundingClientRect();
+                emojiPicker.style.left = `${rect.left}px`;
+                emojiPicker.style.top = `${rect.bottom + 5}px`;
+                emojiPicker.classList.toggle('hidden');
+            });
+            document.addEventListener('click', () => emojiPicker.classList.add('hidden'));
+            emojiPicker.addEventListener('click', (e) => e.stopPropagation());
+        }
+ 
 
-        // 初始化
+
+        // ======  表情
+
+        // 初始化表情选择器
+        function initEmojiPicker() {
+            const emojis = ['😊', '😂', '😍', '👍', '❤️', '🎉', '🤔', '😢', '😡', '👏', '🙌', '😉', '😎', '🤷‍♂️', '🙏'];
+            const emojiContainer = emojiPicker.querySelector('div');
+
+            emojis.forEach(emoji => {
+                const emojiBtn = document.createElement('button');
+                emojiBtn.className = 'p-2 hover:bg-gray-100 rounded-full transition';
+                emojiBtn.textContent = emoji;
+                emojiBtn.addEventListener('click', () => {
+                    messageInput.value += emoji;
+                    messageInput.focus();
+                    // 触发输入事件，发送正在输入状态
+                    handleInput();
+                });
+                emojiContainer.appendChild(emojiBtn);
+            });
+
+            emojiBtn.addEventListener('click', (e) => {
+                console.log('显示表情')
+                e.stopPropagation();
+                const rect = emojiBtn.getBoundingClientRect();
+                emojiPicker.style.top = `${rect.bottom -200}px`;
+                emojiPicker.style.left = `${rect.left + window.scrollX}px`;
+                //emojiPicker.classList.toggle('hidden');
+            });
+
+            document.addEventListener('click', () => {
+                emojiPicker.classList.add('hidden');
+            });
+
+            emojiPicker.addEventListener('click', (e) => {
+                e.stopPropagation();
+            });
+        }      
+        // ======================== 页面初始化（修改：移除重复的会话恢复逻辑，Socket连接时已处理） ========================
         window.addEventListener('load', () => {
-            // 初始化性别选择功能
+            // 初始化性别选择
             handleGenderSelection();
 
-            // 检查用户偏好语言
+            // 初始化语言
             const savedLang = localStorage.getItem('preferred_language');
             if (savedLang && languages[savedLang]) {
                 setLanguage(savedLang);
             } else {
-                // 尝试使用浏览器语言
+                // 自动检测浏览器语言
                 const browserLang = navigator.language || navigator.userLanguage;
-                const langCode = browserLang.split('-')[0]; // 取主要语言代码
-                // 检查是否有对应的语言包，没有则使用默认语言
+                const langCode = browserLang.split('-')[0];
                 const supportedLangs = Object.keys(languages);
                 const matchedLang = supportedLangs.find(lang => lang.startsWith(langCode)) || 'zh-CN';
                 setLanguage(matchedLang);
             }
 
-            initWebSocket();
+            // 初始化Socket.io（核心替换：连接成功后自动尝试恢复会话）
+            initSocketIO();
+
+            // 初始化事件监听
+            initEventListeners();
+
+            // 初始化表情选择器（依赖外部JS）
+          
             initEmojiPicker();
         });
-
-
-
-
     </script>
-
-
-
-    <script src="/js/add_ui.js"> </script>
-    <script src="/js/img-zoom.js"> </script>
-
+    <script src="/js/add_ui.js"></script>
+    <script src="/js/img-zoom.js"></script>
 </body>
-
 </html>
