@@ -24,132 +24,11 @@
             }
         }
     </script>
-    <style type="text/tailwindcss">
-        @layer utilities {
-            .content-auto {
-                content-visibility: auto;
-            }
-            .scrollbar-hide {
-                -ms-overflow-style: none;
-                scrollbar-width: none;
-            }
-            .scrollbar-hide::-webkit-scrollbar {
-                display: none;
-            }
-            .paste-hint {
-                animation: fadeInOut 2s ease-in-out;
-            }
-            @keyframes fadeInOut {
-                0% { opacity: 0; }
-                20% { opacity: 1; }
-                80% { opacity: 1; }
-                100% { opacity: 0; }
-            }
-            .upload-progress {
-                height: 4px;
-                background-color: #e2e8f0;
-                border-radius: 2px;
-                overflow: hidden;
-                margin-top: 2px;
-            }
-            .progress-bar {
-                height: 100%;
-                background-color: #3B82F6;
-                width: 0%;
-                transition: width 0.3s ease;
-            }
-            .typing-indicator {
-                display: inline-flex;
-                align-items: center;
-                gap: 2px;
-                color: #64748b;
-                font-size: 12px;
-                padding: 4px 8px;
-                border-radius: 4px;
-                background-color: #f1f5f9;
-            }
-            .typing-dot {
-                width: 4px;
-                height: 4px;
-                border-radius: 50%;
-                background-color: #64748b;
-                animation: typing 1.4s infinite ease-in-out both;
-            }
-            .typing-dot:nth-child(1) { animation-delay: -0.32s; }
-            .typing-dot:nth-child(2) { animation-delay: -0.16s; }
-            @keyframes typing {
-                0% { transform: translateY(0px); }
-                28% { transform: translateY(-5px); }
-                44% { transform: translateY(0px); }
-            }
-            .language-selector {
-                position: relative;
-                display: inline-block;
-            }
-            .language-dropdown {
-                position: absolute;
-                top: 100%;
-                right: 0;
-                background-color: white;
-                box-shadow: 0 2px 8px rgba(0,0,0,0.15);
-                border-radius: 4px;
-                padding: 4px 0;
-                margin-top: 4px;
-                min-width: 120px;
-                z-index: 100;
-            }
-            .language-option {
-                padding: 6px 12px;
-                cursor: pointer;
-                transition: background-color 0.2s;
-            }
-            .language-option:hover {
-                background-color: #f1f5f9;
-            }
-            .language-option.active {
-                background-color: #e0f2fe;
-                color: #0284c7;
-            }
-            .gender-option {
-                cursor: pointer;
-                transition: all 0.2s;
-            }
-            .gender-option.selected {
-                background-color: #e0f2fe;
-                border-color: #3B82F6;
-                color: #3B82F6;
-                font-weight: 500;
-            }
-        }
-    </style>
 
-    <style type="text/tailwindcss">
-  @layer utilities {
-    /* 图片悬停效果 */
-    .chat-image {
-      @apply rounded-lg cursor-zoom-in transition-transform duration-200 hover:scale-[1.02];
-    }
-    /* 模态框动画 */
-    .modal-enter {
-      @apply opacity-0;
-    }
-    .modal-enter-active {
-      @apply opacity-100 transition-opacity duration-300;
-    }
-    .modal-exit {
-      @apply opacity-100;
-    }
-    .modal-exit-active {
-      @apply opacity-0 transition-opacity duration-300;
-    }
-    .image-enter {
-      @apply scale-95 opacity-0;
-    }
-    .image-enter-active {
-      @apply scale-100 opacity-100 transition-all duration-300;
-    }
-  }
-</style>
+
+    <link rel="stylesheet" href="/css/index.css">
+
+
 </head>
 
 <body class="bg-gray-100 min-h-screen font-sans">
@@ -164,7 +43,7 @@
                     <i class="fa fa-chevron-down text-xs"></i>
                 </button>
                 <div id="language-dropdown" class="language-dropdown hidden">
-                     <div class="language-option active" data-lang="zh-TW">繁体中文</div>
+                    <div class="language-option active" data-lang="zh-TW">繁体中文</div>
                     <div class="language-option " data-lang="zh-CN">简体中文</div>
                     <div class="language-option" data-lang="en">English</div>
                     <div class="language-option" data-lang="ja">日本語</div>
@@ -379,10 +258,10 @@
                             <i class="fa fa-check-circle text-secondary mt-1"></i>
                             <span data-i18n="rules.rule4">如遇不当内容，可随时结束聊天</span>
                         </li>
-                       <li class="flex items-start gap-2">
-        <i class="fa fa-check-circle text-secondary mt-1"></i>
-        <span data-i18n="rules.rule5">聊天记录保存在本地，不会上传到服务器</span>
-    </li>
+                        <li class="flex items-start gap-2">
+                            <i class="fa fa-check-circle text-secondary mt-1"></i>
+                            <span data-i18n="rules.rule5">聊天记录保存在本地，不会上传到服务器</span>
+                        </li>
                     </ul>
 
                     <div class="bg-blue-50 p-4 rounded-lg">
@@ -407,11 +286,22 @@
             <!-- 表情会动态添加到这里 -->
         </div>
     </div>
-   
+
+
+    <!-- 在body结束前添加图片预览模态框 -->
+    <div id="image-modal" class="fixed inset-0 bg-black/80 z-50 hidden items-center justify-center p-4">
+        <button id="close-modal"
+            class="absolute top-4 right-4 text-white text-2xl hover:text-gray-300 transition-colors">
+            <i class="fa fa-times"></i>
+        </button>
+        <img id="modal-image" src="" alt="放大查看"
+            class="max-w-full max-h-[90vh] object-contain transition-all duration-300">
+    </div>
+
     <script src="/js/i18n.js"></script>
-    
+
     <script>
-      
+
 
         // DOM元素
         const userInfoPanel = document.getElementById('user-info-panel');
@@ -611,7 +501,7 @@
             chatMessages.scrollTop = chatMessages.scrollHeight;
         }
 
-        
+
         //保存聊天匹配信息到本地存储
         function saveChatMatchInfo(chatId, partnerNickname) {
             const chatMatchInfo = {
@@ -959,167 +849,15 @@
                 Math.random().toString(36).substring(2, 15);
         }
 
-        // 自定义提示框组件
-        function createCustomAlert() {
-            // 检查是否已存在提示框元素
-            let alertContainer = document.getElementById('custom-alert');
-            if (!alertContainer) {
-                alertContainer = document.createElement('div');
-                alertContainer.id = 'custom-alert';
-                alertContainer.className = 'fixed inset-0 flex items-center justify-center z-50 hidden';
-                alertContainer.innerHTML = `
-                    <div class="absolute inset-0 bg-black bg-opacity-50 transition-opacity" id="alert-backdrop"></div>
-                    <div class="bg-white rounded-xl shadow-xl p-6 max-w-md w-full mx-4 z-10 transform transition-all">
-                        <div class="text-center mb-4">
-                            <div class="w-12 h-12 bg-blue-100 text-primary rounded-full flex items-center justify-center mx-auto mb-4">
-                                <i class="fa fa-info-circle text-xl"></i>
-                            </div>
-                            <h3 class="text-lg font-semibold text-gray-900" id="alert-title"></h3>
-                            <p class="text-gray-600 mt-2" id="alert-message"></p>
-                        </div>
-                        <div class="flex justify-center">
-                            <button id="alert-confirm-btn" class="bg-primary hover:bg-primary/90 text-white px-6 py-2 rounded-lg transition duration-300">
-                                确定
-                            </button>
-                        </div>
-                    </div>
-                `;
-                document.body.appendChild(alertContainer);
 
-                // 添加事件监听
-                document.getElementById('alert-backdrop').addEventListener('click', hideCustomAlert);
-                document.getElementById('alert-confirm-btn').addEventListener('click', hideCustomAlert);
-            }
-            return alertContainer;
-        }
 
-        // 显示自定义提示框
-        function showCustomAlert(title, message, confirmText = '确定', callback = null) {
-            const alertContainer = createCustomAlert();
-            document.getElementById('alert-title').textContent = title;
-            document.getElementById('alert-message').textContent = message;
-            document.getElementById('alert-confirm-btn').textContent = confirmText;
-            
-            // 重置回调函数
-            const confirmBtn = document.getElementById('alert-confirm-btn');
-            const newConfirmBtn = confirmBtn.cloneNode(true);
-            confirmBtn.parentNode.replaceChild(newConfirmBtn, confirmBtn);
-            
-            // 添加新的事件监听
-            newConfirmBtn.addEventListener('click', () => {
-                hideCustomAlert();
-                if (callback) callback();
-            });
-            document.getElementById('alert-backdrop').addEventListener('click', () => {
-                hideCustomAlert();
-                if (callback) callback();
-            });
-            
-            // 显示提示框
-            alertContainer.classList.remove('hidden');
-            // 添加动画效果
-            const alertBox = alertContainer.querySelector('div:nth-child(2)');
-            alertBox.classList.add('scale-95', 'opacity-0');
-            setTimeout(() => {
-                alertBox.classList.remove('scale-95', 'opacity-0');
-                alertBox.classList.add('scale-100', 'opacity-100');
-            }, 10);
-        }
 
-        // 隐藏自定义提示框
-        function hideCustomAlert() {
-            const alertContainer = document.getElementById('custom-alert');
-            if (alertContainer) {
-                const alertBox = alertContainer.querySelector('div:nth-child(2)');
-                alertBox.classList.remove('scale-100', 'opacity-100');
-                alertBox.classList.add('scale-95', 'opacity-0');
-                setTimeout(() => {
-                    alertContainer.classList.add('hidden');
-                }, 200);
-            }
-        }
 
-        // 自定义确认对话框组件
-        function createCustomConfirm() {
-            // 检查是否已存在确认框元素
-            let confirmContainer = document.getElementById('custom-confirm');
-            if (!confirmContainer) {
-                confirmContainer = document.createElement('div');
-                confirmContainer.id = 'custom-confirm';
-                confirmContainer.className = 'fixed inset-0 flex items-center justify-center z-50 hidden';
-                confirmContainer.innerHTML = `
-                    <div class="absolute inset-0 bg-black bg-opacity-50 transition-opacity" id="confirm-backdrop"></div>
-                    <div class="bg-white rounded-xl shadow-xl p-6 max-w-md w-full mx-4 z-10 transform transition-all">
-                        <div class="text-center mb-6">
-                            <div class="w-12 h-12 bg-yellow-100 text-yellow-600 rounded-full flex items-center justify-center mx-auto mb-4">
-                                <i class="fa fa-exclamation-triangle text-xl"></i>
-                            </div>
-                            <h3 class="text-lg font-semibold text-gray-900" id="confirm-title">确认操作</h3>
-                            <p class="text-gray-600 mt-2" id="confirm-message"></p>
-                        </div>
-                        <div class="flex justify-center gap-3">
-                            <button id="confirm-cancel-btn" class="bg-gray-200 hover:bg-gray-300 text-gray-800 px-4 py-2 rounded-lg transition duration-300">
-                                取消
-                            </button>
-                            <button id="confirm-ok-btn" class="bg-primary hover:bg-primary/90 text-white px-6 py-2 rounded-lg transition duration-300">
-                                确定
-                            </button>
-                        </div>
-                    </div>
-                `;
-                document.body.appendChild(confirmContainer);
-            }
-            return confirmContainer;
-        }
 
-        // 显示自定义确认对话框
-        function showCustomConfirm(message, callback = null) {
-            const confirmContainer = createCustomConfirm();
-            document.getElementById('confirm-message').textContent = message;
-            
-            // 重置回调函数
-            const cancelBtn = document.getElementById('confirm-cancel-btn');
-            const okBtn = document.getElementById('confirm-ok-btn');
-            
-            const newCancelBtn = cancelBtn.cloneNode(true);
-            const newOkBtn = okBtn.cloneNode(true);
-            
-            cancelBtn.parentNode.replaceChild(newCancelBtn, cancelBtn);
-            okBtn.parentNode.replaceChild(newOkBtn, okBtn);
-            
-            // 添加新的事件监听
-            newCancelBtn.addEventListener('click', () => {
-                hideCustomConfirm();
-            });
-            
-            newOkBtn.addEventListener('click', () => {
-                hideCustomConfirm();
-                if (callback) callback();
-            });
-            
-            // 显示确认框
-            confirmContainer.classList.remove('hidden');
-            // 添加动画效果
-            const confirmBox = confirmContainer.querySelector('div:nth-child(2)');
-            confirmBox.classList.add('scale-95', 'opacity-0');
-            setTimeout(() => {
-                confirmBox.classList.remove('scale-95', 'opacity-0');
-                confirmBox.classList.add('scale-100', 'opacity-100');
-            }, 10);
-        }
 
-        // 隐藏自定义确认对话框
-        function hideCustomConfirm() {
-            const confirmContainer = document.getElementById('custom-confirm');
-            if (confirmContainer) {
-                const confirmBox = confirmContainer.querySelector('div:nth-child(2)');
-                confirmBox.classList.remove('scale-100', 'opacity-100');
-                confirmBox.classList.add('scale-95', 'opacity-0');
-                setTimeout(() => {
-                    confirmContainer.classList.add('hidden');
-                }, 200);
-            }
-        }
+
+
+
 
         // 开始匹配流程
         function startMatching() {
@@ -1210,40 +948,7 @@
             hideTypingIndicator();
         }
 
-        // 初始化表情选择器
-        function initEmojiPicker() {
-            const emojis = ['😊', '😂', '😍', '👍', '❤️', '🎉', '🤔', '😢', '😡', '👏', '🙌', '😉', '😎', '🤷‍♂️', '🙏'];
-            const emojiContainer = emojiPicker.querySelector('div');
 
-            emojis.forEach(emoji => {
-                const emojiBtn = document.createElement('button');
-                emojiBtn.className = 'p-2 hover:bg-gray-100 rounded-full transition';
-                emojiBtn.textContent = emoji;
-                emojiBtn.addEventListener('click', () => {
-                    messageInput.value += emoji;
-                    messageInput.focus();
-                    // 触发输入事件，发送正在输入状态
-                    handleInput();
-                });
-                emojiContainer.appendChild(emojiBtn);
-            });
-
-            emojiBtn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                const rect = emojiBtn.getBoundingClientRect();
-                emojiPicker.style.top = `${rect.bottom + window.scrollY + 5}px`;
-                emojiPicker.style.left = `${rect.left + window.scrollX}px`;
-                emojiPicker.classList.toggle('hidden');
-            });
-
-            document.addEventListener('click', () => {
-                emojiPicker.classList.add('hidden');
-            });
-
-            emojiPicker.addEventListener('click', (e) => {
-                e.stopPropagation();
-            });
-        }
 
         // 上传图片到服务器
         function uploadImageToServer(file) {
@@ -1505,123 +1210,14 @@
 
 
 
-        
+
     </script>
 
-    <!-- 在body结束前添加图片预览模态框 -->
-<div id="image-modal" class="fixed inset-0 bg-black/80 z-50 hidden items-center justify-center p-4">
-  <button id="close-modal" class="absolute top-4 right-4 text-white text-2xl hover:text-gray-300 transition-colors">
-    <i class="fa fa-times"></i>
-  </button>
-  <img id="modal-image" src="" alt="放大查看" class="max-w-full max-h-[90vh] object-contain transition-all duration-300">
-</div>
 
-<style type="text/tailwindcss">
-  @layer utilities {
-    /* 图片悬停效果 */
-    .chat-image {
-      @apply rounded-lg cursor-zoom-in transition-transform duration-200 hover:scale-[1.02];
-    }
-    /* 模态框动画 */
-    .modal-enter {
-      @apply opacity-0;
-    }
-    .modal-enter-active {
-      @apply opacity-100 transition-opacity duration-300;
-    }
-    .modal-exit {
-      @apply opacity-100;
-    }
-    .modal-exit-active {
-      @apply opacity-0 transition-opacity duration-300;
-    }
-    .image-enter {
-      @apply scale-95 opacity-0;
-    }
-    .image-enter-active {
-      @apply scale-100 opacity-100 transition-all duration-300;
-    }
-  }
-</style>
 
-<script>
-  // 在现有JavaScript代码中添加以下内容
+    <script src="/js/add_ui.js"> </script>
+    <script src="/js/img-zoom.js"> </script>
 
-  // 获取模态框元素
-  const imageModal = document.getElementById('image-modal');
-  const modalImage = document.getElementById('modal-image');
-  const closeModal = document.getElementById('close-modal');
-
-  // 打开图片预览
-  function openImagePreview(src) {
-    modalImage.src = src;
-    // 添加动画类
-    imageModal.classList.remove('hidden');
-    imageModal.classList.add('flex', 'modal-enter');
-    setTimeout(() => {
-      imageModal.classList.remove('modal-enter');
-      imageModal.classList.add('modal-enter-active');
-    }, 10);
-    
-    modalImage.classList.add('image-enter');
-    setTimeout(() => {
-      modalImage.classList.remove('image-enter');
-      modalImage.classList.add('image-enter-active');
-    }, 10);
-    
-    // 阻止页面滚动
-    document.body.style.overflow = 'hidden';
-  }
-
-  // 关闭图片预览
-  function closeImagePreview() {
-    imageModal.classList.remove('modal-enter-active');
-    imageModal.classList.add('modal-exit-active');
-    modalImage.classList.remove('image-enter-active');
-    
-    setTimeout(() => {
-      imageModal.classList.add('hidden');
-      imageModal.classList.remove('flex', 'modal-exit', 'modal-exit-active');
-      modalImage.src = '';
-      // 恢复页面滚动
-      document.body.style.overflow = '';
-    }, 300);
-  }
-
-  // 为聊天区域中的图片添加点击事件委托
-  chatMessages.addEventListener('click', (e) => {
-    const chatImage = e.target.closest('.chat-image');
-    if (chatImage) {
-      openImagePreview(chatImage.src);
-    }
-  });
-
-  // 关闭模态框事件
-  closeModal.addEventListener('click', closeImagePreview);
-  
-  // 点击模态框背景关闭
-  imageModal.addEventListener('click', (e) => {
-    if (e.target === imageModal) {
-      closeImagePreview();
-    }
-  });
-
-  // 按ESC键关闭
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && !imageModal.classList.contains('hidden')) {
-      closeImagePreview();
-    }
-  });
-
-  // 确保发送图片时添加chat-image类
-  // 在发送图片的代码部分(需要找到现有发送图片的逻辑)添加：
-  // 例如，当创建图片消息元素时：
-  /*
-  const imgElement = document.createElement('img');
-  imgElement.src = imageUrl;
-  imgElement.className = 'chat-image max-w-[200px] h-auto'; // 添加chat-image类
-  */
-</script>
 </body>
 
 </html>
